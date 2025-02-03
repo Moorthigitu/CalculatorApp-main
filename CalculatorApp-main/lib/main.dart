@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
-import 'package:expressions/expressions.dart';  // For expression evaluation
+import 'package:expressions/expressions.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, Platform;
+
+import 'package:intl/intl.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 void main() {
   runApp(const MyApp());
@@ -23,17 +28,63 @@ class MyApp extends StatelessWidget {
         title: 'Document Upload App',
         theme: ThemeData(
           primarySwatch: Colors.deepPurple,
-          bottomSheetTheme: const BottomSheetThemeData(
-            backgroundColor: Colors.transparent,
-          ),
         ),
-        home: const CalculatorScreen(),
+        home: MainScreen(),
       ),
     );
   }
 }
 
-// ImagePicker Provider
+class MainScreen extends StatefulWidget {
+  @override
+  _MainScreenState createState() => _MainScreenState();
+}
+
+class _MainScreenState extends State<MainScreen> {
+  int _currentIndex = 0;
+  final List<Widget> _screens = [
+    ProviderScreen(),
+    CalculatorScreen(),
+    DocumentUploadScreen(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _screens[_currentIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (index) => setState(() => _currentIndex = index),
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.cloud),
+            label: 'Provider',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calculate),
+            label: 'GetX',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.upload),
+            label: 'Upload',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ProviderScreen extends StatelessWidget {
+  const ProviderScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+        //appBar: AppBar(title: const Text('Provider Example')),
+        body: CalculatorScreen());
+  }
+}
+
 class ImagePickerProvider extends ChangeNotifier {
   File? _image;
   File? get image => _image;
@@ -44,17 +95,26 @@ class ImagePickerProvider extends ChangeNotifier {
   }
 }
 
-// Calculator Controller (GetX)
 class CalculatorController extends GetxController {
   var input = ''.obs;
   var result = '0'.obs;
 
   void onNumberPress(String value) {
-    input.value += value;
+    if (value == '.') {
+      if (!input.value.contains('.') ||
+          input.value.split(RegExp(r'[+\-*/=]')).last.contains('.')) {
+        input.value += value;
+      }
+    } else {
+      input.value += value;
+    }
   }
 
   void onOperatorPress(String operator) {
-    input.value += operator;
+    if (input.isNotEmpty &&
+        RegExp(r'[0-9.]').hasMatch(input.value[input.value.length - 1])) {
+      input.value += operator;
+    }
   }
 
   void onClear() {
@@ -79,47 +139,40 @@ class CalculatorController extends GetxController {
   String _evaluateExpression(String expression) {
     try {
       expression = expression.replaceAll('x', '*').replaceAll('÷', '/');
-      
       final exp = Expression.parse(expression);
       final evaluator = ExpressionEvaluator();
       final resultValue = evaluator.eval(exp, {});
-      
-      // Format the result to 2 decimal places
-      return resultValue.toStringAsFixed(2);
+
+      if (expression.contains('/0')) return 'Error: Division by zero';
+
+      NumberFormat formatter = NumberFormat()
+        ..minimumFractionDigits = 0
+        ..maximumFractionDigits = 3;
+      return formatter.format(resultValue);
     } catch (e) {
-      return 'Error';
+      return 'Error: Invalid Expression';
     }
   }
 }
 
-// Calculator Screen
-class CalculatorScreen extends StatefulWidget {
-  const CalculatorScreen({super.key});
-
-  @override
-  _CalculatorScreenState createState() => _CalculatorScreenState();
-}
-
-class _CalculatorScreenState extends State<CalculatorScreen> {
+class CalculatorScreen extends StatelessWidget {
   final CalculatorController controller = Get.put(CalculatorController());
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Calculator'),
-      ),
+      appBar: AppBar(title: const Text('Calculator')),
       body: Column(
         children: [
           const SizedBox(height: 20),
           Expanded(
             flex: 1,
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Obx(() => Text(
                       controller.input.value,
-                      style: const TextStyle(fontSize: 32, color: Colors.black54),
+                      style:
+                          const TextStyle(fontSize: 32, color: Colors.black54),
                     )),
                 Obx(() => Text(
                       controller.result.value,
@@ -160,19 +213,6 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 0,
-        onTap: (index) {
-          if (index == 2) {
-            Get.to(() => const DocumentUploadScreen());
-          }
-        },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.cloud), label: 'Provider'),
-          BottomNavigationBarItem(icon: Icon(Icons.code), label: 'GetX'),
-          BottomNavigationBarItem(icon: Icon(Icons.upload), label: 'Upload'),
-        ],
-      ),
     );
   }
 
@@ -182,138 +222,111 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: color,
-        ),
+        decoration: BoxDecoration(shape: BoxShape.circle, color: color),
         child: Center(
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 24, color: Colors.white),
-          ),
+          child: Text(label,
+              style: const TextStyle(fontSize: 24, color: Colors.white)),
         ),
       ),
     );
   }
 }
 
-// Document Upload Screen
-class DocumentUploadScreen extends StatefulWidget {
-  const DocumentUploadScreen({super.key});
-
-  @override
-  _DocumentUploadScreenState createState() => _DocumentUploadScreenState();
-}
-
-class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
+class DocumentUploadScreen extends StatelessWidget {
   final ImagePicker _picker = ImagePicker();
+  final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
 
-  Future<void> _pickImage() async {
+  Future<Permission> _getGalleryPermission() async {
+    if (Platform.isAndroid) {
+      final androidInfo = await _deviceInfo.androidInfo;
+      return androidInfo.version.sdkInt >= 33
+          ? Permission.photos
+          : Permission.storage;
+    }
+    return Permission.photos;
+  }
+
+  Future<void> _handleImagePick(String type) async {
     try {
-      final XFile? image = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
-      );
-      if (image != null) {
-        context.read<ImagePickerProvider>().updateImage(File(image.path));
-        Get.snackbar(
-          'Success',
-          'Image uploaded successfully',
-          backgroundColor: Colors.green.withOpacity(0.1),
-          duration: const Duration(seconds: 2),
-        );
+      final permission =
+          type == 'gallery' ? await _getGalleryPermission() : Permission.camera;
+
+      final status = await permission.request();
+
+      if (status.isGranted) {
+        final XFile? file = await (type == 'gallery'
+            ? _picker.pickImage(source: ImageSource.gallery)
+            : _picker.pickImage(source: ImageSource.camera));
+
+        if (file != null) {
+          _updateImage(file);
+        } else {
+          Get.snackbar('Cancelled', 'No file selected');
+        }
+      } else {
+        Get.snackbar('Permission Required', 'Please enable access to continue');
       }
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to upload image',
-        backgroundColor: Colors.red.withOpacity(0.1),
-        duration: const Duration(seconds: 2),
-      );
+      Get.snackbar('Error', 'Failed to pick media: ${e.toString()}');
     }
   }
 
-  Future<void> _pickDocumentFromCamera() async {
-    try {
-      final XFile? image = await _picker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 85,
-        preferredCameraDevice: CameraDevice.rear,
-      );
-      if (image != null) {
-        context.read<ImagePickerProvider>().updateImage(File(image.path));
-        Get.snackbar(
-          'Success',
-          'Document photo captured successfully',
-          backgroundColor: Colors.green.withOpacity(0.1),
-          duration: const Duration(seconds: 2),
-        );
-      }
-    } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to capture document',
-        backgroundColor: Colors.red.withOpacity(0.1),
-        duration: const Duration(seconds: 2),
-      );
-    }
+  void _updateImage(XFile file) {
+    final context = Get.context!;
+    context.read<ImagePickerProvider>().updateImage(File(file.path));
+    Get.snackbar('Success', 'File selected successfully');
   }
 
   @override
   Widget build(BuildContext context) {
     final image = context.watch<ImagePickerProvider>().image;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Upload Document'),
-      ),
+      appBar: AppBar(title: const Text('Upload Document')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
             const SizedBox(height: 20),
-            const Text(
-              'Take a photo of document',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
+            const Text('Document Upload',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
-            const Text(
-              'Please ensure photos are clear and visible',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
+            const Text('Ensure documents are clear and valid',
+                style: TextStyle(fontSize: 16, color: Colors.grey)),
             const SizedBox(height: 20),
             if (image != null)
-              Container(
-                margin: const EdgeInsets.all(16),
-                height: 150,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.deepPurple),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.file(
-                    image,
-                    fit: BoxFit.cover,
+              Expanded(
+                child: Container(
+                  margin: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.deepPurple),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.file(image, fit: BoxFit.cover),
                   ),
                 ),
               ),
             const Spacer(),
             ElevatedButton(
-              onPressed: _pickImage,
-              child: const Text('Choose from Gallery'),
+              onPressed: () => _handleImagePick('gallery'),
               style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 30),
                 backgroundColor: Colors.deepPurple,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 50),
               ),
+              child: const Text('Choose from Gallery'),
             ),
             const SizedBox(height: 10),
             ElevatedButton(
-              onPressed: _pickDocumentFromCamera,
-              child: const Text('Take a Photo'),
+              onPressed: () => _handleImagePick('camera'),
               style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 30),
                 backgroundColor: Colors.deepPurple,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 50),
               ),
+              child: const Text('Take Photo'),
             ),
             const SizedBox(height: 20),
           ],
