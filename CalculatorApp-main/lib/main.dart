@@ -101,8 +101,11 @@ class CalculatorController extends GetxController {
 
   void onNumberPress(String value) {
     if (value == '.') {
-      if (!input.value.contains('.') ||
-          input.value.split(RegExp(r'[+\-*/=]')).last.contains('.')) {
+      if (input.value.isEmpty || input.value.endsWith('.')) return;
+      List<String> parts = input.value.split(RegExp(r'[+\-*/]'));
+      String lastPart = parts.isNotEmpty ? parts.last : '';
+
+      if (!lastPart.contains('.')) {
         input.value += value;
       }
     } else {
