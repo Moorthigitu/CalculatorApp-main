@@ -223,10 +223,9 @@ class CalculatorScreen extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.all(8),
         decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-        child: Center(
-          child: Text(label,
-              style: const TextStyle(fontSize: 24, color: Colors.white)),
-        ),
+        alignment: Alignment.center,
+        child: Text(label,
+            style: const TextStyle(fontSize: 24, color: Colors.white)),
       ),
     );
   }
